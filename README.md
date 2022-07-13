@@ -18,7 +18,7 @@ We created different R markwdown scripts for different stage of the project, at 
 - nfhs_ari_unweighted_table1.Rmd
 - nfhs_ari_weighted_table1.Rmd
 - nfhs_ari_weighted_table2.Rmd
-- nfhs_regional_analysis.Rmd
+- nfhs_ari_regional_analysis.Rmd
 - nfhs_ari_regression.Rmd
 
 
