@@ -1,5 +1,5 @@
 # NFHS
-This repository contains the R markdown scripts used for the realization of the Master's thesis "Patterns of antibiotic use for acute
+This repository contains the R markdown files used for the realization of the Master's thesis "Patterns of antibiotic use for acute
 respiratory infections in under-three-years-old children in India: a cross-sectional study" for the Erasmus Mundus Joint Master Degree in Infectious Diseases and One Health. 
 
 We created different R markwdown scripts for different stage of the project, at the beginning each file there is a brief description of the objectives for each script.
