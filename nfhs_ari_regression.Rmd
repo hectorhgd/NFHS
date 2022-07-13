@@ -1,0 +1,290 @@
+---
+title: "Logistic Regression"
+author: "Hector"
+date: '2022-06-22'
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Logistic Regression Analysis
+
+## Objectives
+
+- To identify and quantify the risk differences (RD) of the selected predictor variables and antibiotic consumption in U3 children with ARI.
+
+- To progressively create regression models by groups of variables adjusting for factors more proximal to the outcome.
+
+- To create a gtsummary table containing the the frequency of antibiotic consumption for each variable and the estimations from the models.
+
+```{r}
+library(tidyverse)   # data management + ggplot2 graphics
+library(survey)      # for survey functions
+library(srvyr)       # dplyr wrapper for survey package
+library(gtsummary)   # wrapper for survey package to produce tables
+
+library(labelled) # Contains the look_for() function
+library(epiDisplay) # tab1()
+library(scales) # percent() 
+library(glue) # glue()
+library(gt) # gt table 
+library(modelsummary) # summary of model statistics side by side
+
+# Packages for logistic regression model marginal effect measurements
+library(margins) # devtools::install_github("tzoltak/prediction") Updated to handle NA values
+library(prediction) #devtools::install_github("tzoltak/margins") Updated to handle NA values
+
+
+```
+
+## Merging the datasets
+
+```{r}
+nfhs4 <- readRDS("nfhs4_ari.Rds")
+nfhs5 <- readRDS("nfhs5_ari.Rds")
+
+nfhs4 <- nfhs4 %>% mutate(wave = "NFHS4")
+nfhs5 <- nfhs5 %>% mutate(wave = "NFHS5")
+
+nfhs <- bind_rows(nfhs4, nfhs5)
+
+```
+
+## Loading the dataset
+```{r}
+write_rds(nfhs,"nfhs_ari_all.Rds")
+nfhs <- read_rds("nfhs_ari_all.Rds")
+```
+
+
+## Weights and survey design
+
+```{r}
+nfhs$caste_f <- relevel(nfhs$caste_f, ref = "None") #Changing reference of caste category to None
+
+nfhs <- nfhs %>% 
+  mutate(wgt = v005/1000000) %>%  # Turning weights into decimals
+  mutate(strata = as.character(paste(nfhs$state_f, nfhs$place_f, sep = " "))) # Strata based on region and urban/rural
+
+nfhs_design <- nfhs %>%
+  as_survey_design(ids = v001, # cluster ids
+                   weights = wgt, # weight variable created above
+                   strata = strata, # strata
+                   nest = TRUE,
+                   check.strata = TRUE
+                  )
+```
+
+Treating single PSUs as 'Certainty': a single-PSU stratum makes no contribution to the variance (for multistage sampling it makes no contribution at that level of sampling). This is an alternative to specifying fpc, and might be useful for compatibility with other software. 
+
+```{r}
+options(survey.lonely.psu="certainty")
+```
+
+## Regression models by groups of variables
+
+### Demographics
+
+```{r}
+theme_gtsummary_compact(set_theme = TRUE, font_size = NULL) # Compact theme
+
+demographics.model <- svyglm(antibiotics_f ~ 
+# Demographics
+place_f+
+wi_f +
+religion_f +
+caste_f+
+m.age+
+m.edu.att_f,
+
+ family = quasibinomial(link = 'logit'), design = nfhs_design)
+a<-summary(margins(demographics.model))
+a
+
+tbl.demog <- margins(demographics.model, design = nfhs_design) %>%
+  tbl_regression() %>% 
+  modify_fmt_fun(update = estimate ~ label_percent(accuracy = 0.1)) %>% 
+  #modify_column_hide(columns = c(p.value)) %>% 
+  modify_header(estimate ~ "**RD**") %>% 
+  bold_p(t = 0.05)
+
+# Changing the format of the CI
+tbl.demog$table_body$conf.low <- round(tbl.demog$table_body$conf.low*100,1)
+tbl.demog$table_body$conf.high <-round(tbl.demog$table_body$conf.high*100,1)
+tbl.demog$table_body$ci <-as.character(glue('{tbl.demog$table_body$conf.low}, {tbl.demog$table_body$conf.high}'))
+
+tbl.demog_flex <- as_flex_table(tbl.demog) # Flex format is easier to export in a word document
+tbl.demog_flex
+```
+
+
+### Household
+
+```{r}
+hh.model <- svyglm(antibiotics_f ~ 
+# Demographics
+
+place_f+
+wi_f +
+religion_f +
+caste_f+
+
+m.age+
+m.edu.att_f+
+# Household variables
+hhsize +
+died_f+
+fuel_g_f +
+water.source_g_f +
+toilet_g_f +
+handwash.soap_f +
+media_f +
+bpl_f +
+smoke_g_f,
+family = quasibinomial(link = 'logit'), design = nfhs_design)
+
+tbl.hh <- margins(hh.model, design = nfhs_design) %>%
+  tbl_regression() %>% 
+  modify_fmt_fun(update = estimate ~ label_percent(accuracy = 0.1)) %>% 
+  #modify_column_hide(columns = c(p.value)) %>% 
+  modify_header(estimate ~ "**RD**") %>% 
+  bold_p(t = 0.05)
+
+# Changing the format of the CI
+tbl.hh$table_body$conf.low <- round(tbl.hh$table_body$conf.low*100,1)
+tbl.hh$table_body$conf.high <-round(tbl.hh$table_body$conf.high*100,1)
+tbl.hh$table_body$ci <-as.character(glue('{tbl.hh$table_body$conf.low}, {tbl.hh$table_body$conf.high}'))
+
+tbl.hh_flex <- as_flex_table(tbl.hh) # Flex format is easier to export in a word document
+tbl.hh_flex
+```
+
+### Child related
+```{r}
+child.model <- svyglm(antibiotics_f ~ 
+# Demographics
+
+place_f+
+wi_f +
+religion_f +
+caste_f+
+
+m.age+
+m.edu.att_f+
+# Household variables
+hhsize +
+died_f+
+fuel_g_f +
+water.source_g_f +
+toilet_g_f +
+handwash.soap_f +
+media_f +
+bpl_f +
+smoke_g_f+
+# Child variables
+sex_f +
+age +
+bord +
+delivery_g_f +
+stunting_g_f +
+wasting_g_f+
+healthcard_f +
+fimm_f, 
+
+family = quasibinomial(link = 'logit'), design = nfhs_design)
+
+tbl.child <- margins(child.model, design = nfhs_design) %>%
+  tbl_regression() %>% 
+  modify_fmt_fun(update = estimate ~ label_percent(accuracy = 0.1)) %>% 
+  #modify_column_hide(columns = c(p.value)) %>% 
+  modify_header(estimate ~ "**RD**") %>% 
+  bold_p(t = 0.05)
+
+# Changing the format of the CI
+tbl.child$table_body$conf.low <- round(tbl.child$table_body$conf.low*100,1)
+tbl.child$table_body$conf.high <-round(tbl.child$table_body$conf.high*100,1)
+tbl.child$table_body$ci <-as.character(glue('{tbl.child$table_body$conf.low}, {tbl.child$table_body$conf.high}'))
+
+tbl.child_flex <- as_flex_table(tbl.child) # Flex format is easier to export in a word document
+tbl.child_flex
+```
+### Healthcare
+
+```{r}
+healthcare.model <- svyglm(antibiotics_f ~ 
+# Demographics
+
+# Demographics
+
+place_f+
+wi_f +
+religion_f +
+caste_f+
+
+m.age+
+m.edu.att_f+
+# Household variables
+hhsize +
+died_f+
+fuel_g_f +
+water.source_g_f +
+toilet_g_f +
+handwash.soap_f +
+media_f +
+bpl_f +
+smoke_g_f+
+# Child variables
+sex_f +
+age +
+bord +
+delivery_g_f +
+stunting_g_f +
+wasting_g_f+ 
+# Health care related variables
+access +
+visit3mo_f +
+insurance_f +
+healthcard_f +
+fimm_f +
+icds_f +
+parasites_f +
+vitA_f +
+iron_f +
+source_g1_f, na.action = na.omit,
+family = quasibinomial(link = 'logit'), design = nfhs_design)
+
+tbl.hc <- margins(healthcare.model, design = nfhs_design) %>%
+  tbl_regression() %>% 
+  modify_fmt_fun(update = estimate ~ label_percent(accuracy = 0.1)) %>% 
+  #modify_column_hide(columns = c(p.value)) %>% 
+  modify_header(estimate ~ "**RD**") %>% 
+  bold_p(t = 0.05)
+
+# Changing the format of the CI
+tbl.hc$table_body$conf.low <- round(tbl.hc$table_body$conf.low*100,1)
+tbl.hc$table_body$conf.high <-round(tbl.hc$table_body$conf.high*100,1)
+tbl.hc$table_body$ci <-as.character(glue('{tbl.hc$table_body$conf.low}, {tbl.hc$table_body$conf.high}'))
+
+tbl.hc_flex <- as_flex_table(tbl.hc) # Flex format is easier to export in a word document
+tbl.hc_flex
+
+```
+
+### Merging all models
+
+```{r}
+merge_nfhs <- tbl_merge(list(tbl.demog, tbl.hh, tbl.child,  tbl.hc), tab_spanner = F)
+merge_nfhs %>%  as_flex_table()
+merge_nfhs
+```
+
+### Multimodel 
+
+To visualize the number of observations that were used for each model we use `modelsummary()` function that creates also fitness tests not relevant for our model.
+
+```{r}
+modelsummary(list(demographics.model, hh.model, child.model, healthcare.model))
+```
+

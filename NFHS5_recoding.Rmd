@@ -1,0 +1,1760 @@
+---
+title: "NFHS5 Data recoding"
+author: "Hector"
+date: '2022-03-29'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# nfhs5 Recoding
+
+## Objectives
+
+-   Recoding, labeling and regrouping variables.
+
+-   Exploring and looking at the distribution of the variables of interest.
+
+-   Obtain a dataset only containing the recoded variables of interest.
+
+
+## Loading the dataset
+
+Loading packages:
+
+```{r}
+library(tidyverse)
+library(labelled) # Contains the look_for() function
+library(epiDisplay) # tab1()
+```
+
+
+*Note*: the `to_factor()` function to use the haven::labels already in the .DTA dataset. Easier and less error prone than `factor()`.
+
+
+Loading the dataset:
+
+```{r}
+nfhs5 <- readRDS("IABR7AFL_under5_short.Rds")
+```
+
+
+
+## Outcome variable
+
+Proportion of under-five children who were given antibiotics as a treatment for an episode of ARI in the previous two weeks, before the survey was conducted.
+
+ARI: cough accompanied by short, rapid, or difficult breathing 
+
+Using the `look_for()` function I found the following variables:
+
+h31      had cough in last two weeks                                  dbl+lbl  [0] no                     
+                                                                                    [1] yes, last 24 hours     
+                                                                                    [2] yes, last two weeks    
+                                                                                    [8] don't know
+                                                                                    
+h31b     short, rapid breaths dbl+lbl  [0] no        
+                                            [1] yes       
+                                            [8] don't know
+
+h31c     problem in the chest or blocked or running nose dbl+lbl  [1] chest only
+                                                                        [2] nose only 
+                                                                        [3] both      
+                                                                        [6] other     
+                                                                        [8] don't know
+                                                                      
+ml13n    antibiotic (via any delivery method) taken for fever/cough   dbl+lbl  [0] no                     
+                                                                                    [1] yes
+
+### ARI
+
+Children U5 with ARI symptoms: cough accompanied by short, rapid, or difficult breathing.
+Don't know answers set as missing.
+
+```{r}
+tab1(nfhs5$h31)
+```
+
+
+### Were given antibiotics
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(antibiotics = ml13n) %>% 
+  mutate(antibiotics_f = to_factor(antibiotics))
+
+tab1(nfhs5$antibiotics_f)
+```
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(ari = case_when(
+    h31 == 2 & h31b == 1 ~ 1,
+    h31 == 8 | h31b == 8 ~ NA_real_,
+    h31 == 0 | h31b == 0 ~ 0,
+    is.na(h31) == TRUE|is.na(h31b) == TRUE ~ NA_real_
+  )) %>% 
+  mutate(ari_f = factor(ari, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$ari_f)
+```
+
+
+### Children with ARI that were given antibiotics: outcome variable
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(outcome = case_when(
+     ari == 1 & antibiotics == 1 ~ 1,
+     ari == 1 & antibiotics == 0 ~ 0,
+     is.na(ari) == TRUE | is.na(antibiotics) == TRUE ~ NA_real_
+  )) %>% 
+  mutate(outcome_f = factor(outcome, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$outcome_f)
+```
+### Fever 
+
+Exploring other definitions of ARI including fever or cough and rapid short breath as symptoms
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(ari_fever = case_when(
+    h22 == 1 ~ 1,
+    h22 == 0 ~ 0,
+    h22 == 8 ~ NA_real_,
+    is.na(h22) == TRUE ~ NA_real_,
+    h31 == 2 & h31b == 1 ~ 1,
+    h31 == 8 | h31b == 8 ~ NA_real_,
+    h31 == 0 | h31b == 0 ~ 0,
+    is.na(h31) == TRUE|is.na(h31b) == TRUE ~ NA_real_
+  )) %>% 
+  mutate(ari_fever_f = factor(ari_fever, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$ari_fever_f)
+
+nfhs5 <- nfhs5 %>% 
+  mutate(outcome_fever = case_when(
+     ari_fever == 1 & antibiotics == 1 ~ 1,
+     ari_fever == 1 & antibiotics == 0 ~ 0,
+     is.na(ari_fever) == TRUE | is.na(antibiotics) == TRUE ~ NA_real_
+  )) %>% 
+  mutate(outcome_fever_f = factor(outcome_fever, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$outcome_fever_f)
+tab1(nfhs5$outcome_f)
+```
+## Selecting only children with ARI
+Children under 3 years old whose mothers reported ARI symptoms in the 2 weeks before the interview.
+```{r}
+nfhs5 <- nfhs5 %>% filter(ari == 1 & b5 == 1 & age < 36)
+```
+
+
+## Children with LRTI that were given antibiotics
+
+Exploring the URTI and LRTI definitions.
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(nose = case_when(
+    h31c == 1 | h31c == 3  ~ 0,
+    h31c == 8 | h31c == 6 ~ NA_real_,
+    h31c == 2 ~ 1,
+    is.na(h31c) == TRUE ~ NA_real_,
+  )) %>% 
+  mutate(nose_f= factor(nose, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$nose_f)
+```
+
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(chest = case_when(
+    h31c == 1 | h31c == 3 ~ 1,
+    h31c == 8 | h31c == 6 ~ NA_real_,
+    h31c == 2  ~ 0,
+    is.na(h31c) == TRUE ~ NA_real_,
+  )) %>% 
+  mutate(chest_f= factor(chest, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$chest_f)
+```
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(lrti = case_when(
+     ari == 1 & antibiotics == 1 & chest == 1 ~ 1,
+     ari == 0 | antibiotics == 0 ~ 0,
+     is.na(ari) == TRUE | is.na(h31c) == TRUE | is.na(antibiotics) == TRUE ~ NA_real_
+  )) %>% 
+  mutate(lrti_f = factor(lrti, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$lrti_f)
+```
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(urti = case_when(
+     ari == 1 & antibiotics == 1 & nose == 1 ~ 1,
+     ari == 0 | antibiotics == 0 ~ 0,
+     is.na(ari) == TRUE | is.na(h31c) == TRUE | is.na(antibiotics) == TRUE ~ NA_real_
+  )) %>% 
+  mutate(urti_f = factor(urti, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$urti_f)
+```
+
+The N is not big enough to perform analysis.
+
+## Demographs
+
+### Place of residence
+
+First example of variable 'Place of residence', `v025` and `v102`. Urban = 1, Rural = 2
+
+Now let's change the name of this variable to something more common.
+
+```{r}
+nfhs5 <- nfhs5 %>% rename(place = v025)
+```
+Now let's create a factor version of this variable, it might be useful in the future.
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(place_f = factor(place, c(1,2), c("Urban", "Rural")))
+```
+Let's check what we have done so far:
+
+```{r}
+tab1(nfhs5$place_f)
+```
+
+```{r}
+tab1(nfhs5$place, sort.group = "decreasing", cum.percent = TRUE)
+```
+
+
+Alright, that was a very nice first attempt! Now let's re-check with the other variable that contains the same info, v102.
+
+```{r}
+table(nfhs5$v102, exclude = NULL)
+```
+
+So the results are the same, we can move on to the next variable.
+
+### Religion
+
+Religion, `v130`
+
+
+```{r}
+tab1(nfhs5$v130, sort.group = "decreasing", cum.percent = TRUE)
+```
+
+So as we see the main religions are 1 and 2. We can combine all the others into a third category called Others. First we change the name of the variable:
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(religion = v130)
+```
+
+
+Replacing the new values with `recode()`
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(religion = recode(religion, "1" = "1", "2"= "2", "3" = "3", "4" = "3",
+                           "5" = "3", "6" = "3", "7" = "3", "8" = "3", "9" = "3",
+                           "96" = "3"))
+
+tab1(nfhs5$religion)
+```
+Creating a factor variable of religion
+
+```{r}
+nfhs5$religion_f <- factor(nfhs5$religion, labels = c("Hindu", "Muslim", "Others"))
+```
+
+Checking that everything is alright:
+
+```{r}
+tab1(nfhs5$religion_f)
+tab1(nfhs5$religion)
+
+```
+
+### Caste/Tribe
+
+```{r}
+look_for(nfhs5, "caste")
+```
+
+We have two variables containing information:
+- v131: caste or tribe
+- s116: belong to a scheduled caste, a scheduled tribe, other backward class
+
+We will use `s116`, let's rename it:
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(caste = s116)
+
+tab1(nfhs5$caste)
+```
+
+Let's recode the Don't know value into NAs:
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(caste = case_when(caste == 8 ~ NA_real_,
+                           caste == 4 ~ 0,
+                           TRUE ~ as.double(caste)))
+tab1(nfhs5$caste)
+
+```
+Creating factor variable:
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(caste_f = factor(caste, c(0,1,2,3), c("None","Scheduled caste", "Schedule tribe", "OBC")))
+
+tab1(nfhs5$caste_f)
+```
+
+
+### State/Union
+
+Both `v101` and `v024` contains the same information. I'm using `v024` and renaming it `state`, also creating a factor version called `state_f`.
+
+```{r}
+tab1(nfhs5$v024)
+```
+
+
+```{r}
+tab1(nfhs5$v101)
+```
+
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(state = v024)
+nfhs5 <- nfhs5 %>% 
+  mutate(state_new = case_when(
+    state == 35 ~ 1, # Andaman And Nicobar Islands 
+    state == 28 ~ 2, # Andhra Pradesh
+    state == 12 ~ 3, # Arunachal Pradesh
+    state == 18 ~ 4, # Assam
+    state == 10 ~ 5, # Bihar
+    state == 4 ~  6, # Chandigarh
+    state == 22 ~ 7, # Chhattisgarh
+    state == 25 ~ 8, # Dadra & Nagar Haveli And Daman & Diu
+    state == 30 ~ 10, # Goa
+    state == 24 ~ 11, # Gujarat
+    state == 6 ~ 12 , # Haryana
+    state == 2 ~ 13 , # Himachal Pradesh
+    state == 1 ~ 14,  # Jammu And Kashmir
+    state == 37 ~ 14, # Ladakh
+    state == 20 ~ 15, # Jharkhand
+    state == 29 ~ 16, # Karnataka
+    state == 32 ~ 17, # Kerala
+    state == 31 ~ 18, # Lakshadweep
+    state == 23 ~ 19, # Madhya Pradesh
+    state == 27 ~ 20, # Maharashtra
+    state == 14 ~ 21, # Manipur
+    state == 17 ~ 22, # Meghalaya
+    state == 15 ~ 23, # Mizoram
+    state == 13 ~ 24, # Nagaland
+    state == 7  ~ 25, # Delhi
+    state == 21 ~ 26, # Odisha
+    state == 34 ~ 27, # Puducherry
+    state == 3 ~ 28,  # Punjab
+    state == 8 ~ 29,  # Rajasthan
+    state == 11 ~ 30, # Sikkim
+    state == 33 ~ 31, # Tamil Nadu
+    state == 16 ~ 32, # Tripura
+    state == 9 ~ 33,  # Uttar Pradesh
+    state == 5 ~ 34,  # Uttarakhand
+    state == 19 ~ 35, # West Bengal
+    state == 36 ~ 36  # Telangana
+      )) %>% 
+  mutate(state_f = factor(state_new, c(1:8,10:36),labels =  c("Andaman And Nicobar Islands","Andhra Pradesh","Arunachal Pradesh", "Assam","Bihar","Chandigarh","Chhattisgarh", "Dadra & Nagar Haveli And Daman & Diu", "Goa","Gujarat","Haryana","Himachal Pradesh","Jammu And Kashmir", "Jharkhand","Karnataka","Kerala","Lakshadweep","Madhya Pradesh", "Maharashtra","Manipur","Meghalaya","Mizoram","Nagaland","Delhi","Odisha","Puducherry","Punjab","Rajasthan","Sikkim","Tamil Nadu","Tripura","Uttar Pradesh","Uttarakhand","West Bengal","Telangana")))
+tab1(nfhs5$state)        
+tab1(nfhs5$state_new)                              
+tab1(nfhs5$state_f)
+
+```
+
+```{r}
+tab1(nfhs5$state)
+tab1(nfhs5$state_f)
+```
+
+### District
+
+Coded in `sdist`. Rename as `district` and create factor variable `district_f`:
+
+
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(district = sdist)
+
+nfhs5 <- nfhs5 %>% 
+  mutate(district_f = to_factor(district))
+
+```
+
+```{r}
+tab1(nfhs5$district)
+```
+```{r}
+tab1(nfhs5$district_f)
+```
+
+### Wealth index
+
+The are different wealth index depending if they are grouped by state, rural/urban. Let's use the global one `v190`
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(wi = v190)
+
+nfhs5 <- nfhs5 %>% 
+  mutate(wi_f = to_factor(wi))
+
+```
+
+Distribution of wealth index:
+
+```{r}
+tab1(nfhs5$wi)
+```
+```{r}
+tab1(nfhs5$wi_f)
+```
+### Household size
+
+Coded in v136. Rename as `hhsize`, dbl variable. Kept as continuous.
+                                       
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(hhsize = v136)
+
+```
+
+Distribution:
+```{r}
+tab1(nfhs5$hhsize)
+```
+```{r}
+nfhs5 <- mutate(nfhs5, hhsize_f = case_when(hhsize >= 10  ~ ">=10",
+                                           TRUE ~ as.character(hhsize)))
+  
+nfhs5 <- mutate(nfhs5, 
+                hhsize_f = factor(hhsize_f, c(1:9, ">=10"), 
+                                c("1","2","3","4","5","6", "7", "8", "9", ">=10")))
+typeof(nfhs5$hhsize)
+
+tab1(nfhs5$hhsize_f)
+
+```
+### Media accesibility
+
+There are 3 variables with information of 3 different Qs: 
+
+v157     frequency of reading newspaper or magazine 
+
+v158     frequency of listening to radio 
+
+v158     frequency of watching television 
+
+
+We could either treat them separately, it could be useful to determine a way communication for awareness campaigns. 
+*We could create a composite of the three*
+We could do both things. 
+
+Renaming and creating separate factor variables:
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(media.reading = v157)
+
+nfhs5 <- nfhs5 %>% 
+  mutate(media.reading_f = to_factor(media.reading))
+
+nfhs5 <- nfhs5 %>% 
+  rename(media.radio = v158)
+
+nfhs5 <- nfhs5 %>% 
+  mutate(media.radio_f = to_factor(media.radio))
+
+nfhs5 <- nfhs5 %>% 
+  rename(media.tv = v159)
+
+nfhs5 <- nfhs5 %>% 
+  mutate(media.tv_f = to_factor(media.tv))
+
+```
+Distributions of the three variables:
+
+```{r}
+tab1(nfhs5$media.radio_f)
+tab1(nfhs5$media.reading_f)
+tab1(nfhs5$media.tv_f)
+```
+
+
+
+Creating composite variable of media access:
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(media = 
+           case_when(media.reading == 3 | media.radio == 3 | media.tv == 3 ~ 3, # Access at least 1 media almost every day
+                     media.reading == 2 | media.radio == 2 | media.tv == 2 ~ 2, # Access at least one media 1 week
+                     media.reading == 1 | media.radio == 1 | media.tv == 1 ~ 1, # Access at least one media < 1 week
+                     media.reading == 0 & media.radio == 0 & media.tv == 0 ~ 0, # Never access any media
+                     ))
+
+tab1(nfhs5$media)
+
+```
+Creating a factor variable of the new composite `media`
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(media_f = factor(media, c(0,1,2,3), 
+                          c("not at all","less than once a week", "at least once a week", "almost every day")))
+tab1(nfhs5$media_f)
+```
+
+Checking-up:
+```{r}
+#identical(nfhs5$media.reading, IAKR73FL_DC$v157)
+#identical(nfhs5$media.radio, IAKR73FL_DC$v158)
+#identical(nfhs5$media.tv, IAKR73FL_DC$v159)
+```
+
+### Source of drinking water
+
+One variable, v113
+
+Renaming variable to `water.source`
+```{r}
+nfhs5 <- nfhs5 %>% rename(water.source = v113)
+nfhs5 <- nfhs5 %>% 
+  mutate(water.source_f = to_factor(water.source))
+
+```
+
+Recoding variable to improved (1), unimproved (2) categories
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(water.source_g = case_when(
+    water.source == 96 | water.source == 97 ~ NA_real_,
+    water.source < 32 | water.source == 41 | water.source == 51 | water.source == 92 ~ 1,
+    water.source == 61 | water.source == 62| water.source == 71 ~ 1,
+    water.source >= 32 ~ 2))
+
+tab1(nfhs5$water.source_g)
+
+```
+
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(water.source_g_f = factor(water.source_g, c(1,2), c("Improved", "Unimproved")))
+
+tab1(nfhs5$water.source_g_f)
+  
+```
+
+### Hands hygiene
+Only found this variable `v462`, with missing data.
+
+v462       na - washed hands before preparing last meal dbl+lbl  [0] no                                    
+                                                                 [1] yes
+
+So we are going to merge the data from the Household survey to get the information in hv230a and hv230b.
+
+We will merge using two key values hv001 and hv002.
+
+ 63  hv230a   place where household members wash their hands dbl+lbl  [1] observed                          
+                                                                      [2] not observed: not in dwelling     
+                                                                      [3] not observed: no permission to see
+                                                                      [4] not observed: other reason        
+ 64  hv230b   presence of water at hand washing place        dbl+lbl  [0] water not available               
+                                                                      [1] water is available 
+
+  5  hv232    items present: soap or detergent dbl+lbl  [0] no                              
+                                                        [1] yes                             
+ 66  hv232b   items present: ash, mud, sand    dbl+lbl  [0] no                              
+                                                        [1] yes                                           
+ 70  hv232y   items present: none              dbl+lbl  [0] no                              
+                                                        [1] yes: no cleansing agent observed
+
+
+
+```{r}
+tab1(nfhs5$v007)
+hhsurvey5_small <- readRDS("hhsurvey5_small_merge.Rds")
+hhsurvey5_small <- hhsurvey5_small %>% 
+  rename(v001 = hv001) %>%
+  rename(v002 = hv002) 
+
+nfhs5 <- nfhs5 %>% 
+  left_join(hhsurvey5_small, by = c("v001", "v002"))
+
+nfhs5 <- nfhs5 %>% 
+  rename(handwash.place = hv230a) %>% 
+  mutate(handwash.place_g = case_when(
+    handwash.place %in% 2:4 ~ 0,
+    handwash.place == 1 ~ 1
+  )) %>% 
+  mutate(handwash.place_g_f = factor(handwash.place_g, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$handwash.place_g_f)
+
+nfhs5 <- nfhs5 %>% 
+  rename(handwash.water = hv230b) %>% 
+  mutate(handwash.water_f = to_factor(handwash.water))
+
+tab1(nfhs5$handwash.water_f)
+
+nfhs5 <- nfhs5 %>% 
+  rename(handwash.soap = hv232) %>% 
+  mutate(handwash.soap_f = to_factor(handwash.soap)) %>% 
+  rename(handwash.ash = hv232b) %>% 
+  mutate(handwash.ash_f = to_factor(handwash.ash)) %>% 
+  mutate(handwash.any = case_when(
+    hv232y == 1 ~ 0,
+    hv232y == 0 ~ 1,
+    is.na(hv232y) == TRUE ~ NA_real_)) %>% 
+  mutate(handwash.any_f = factor(handwash.any, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$handwash.soap_f)
+tab1(nfhs5$handwash.ash_f)
+tab1(nfhs5$handwash.any_f)
+```
+
+
+
+
+
+### Toilet facility
+
+One variable, `v116`
+
+ [10] flush toilet                         
+ [11] flush to piped sewer system          
+ [12] flush to septic tank                 
+ [13] flush to pit latrine                 
+ [14] flush to somewhere else              
+ [15] flush, don't know where              
+ [20] pit toilet latrine                   
+ [21] ventilated improved pit latrine (vip)
+ [22] pit latrine with slab                
+ [23] pit latrine without slab/open pit    
+ [30] no facility                          
+ [31] no facility/bush/field               
+ [41] composting toilet                    
+ [44] dry toilet                           
+ [96] other                                
+ [97] not a de jure resident 
+ 
+Renaming variable to `toilet` 
+```{r}
+nfhs5 <- nfhs5 %>%
+  rename(toilet = v116)
+
+nfhs5 <- nfhs5 %>% 
+  mutate(toilet_f = to_factor(toilet))
+
+tab1(nfhs5$toilet)
+```
+
+Recoding variable to improved (1), unimproved (2) categories
+```{r}
+nfhs5 <- nfhs5 %>% mutate(toilet_g = 
+         case_when(toilet == 96 | toilet  == 97 ~ NA_real_,
+               toilet == 44 | toilet == 14| toilet == 15 ~ 2,
+               toilet == 23 | toilet == 30| toilet == 31 ~ 2,
+               TRUE ~ 1))
+
+tab1(nfhs5$toilet_g)
+
+```
+
+Creating grouped factor variable
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(toilet_g_f = factor(toilet_g, c(1,2), c("Improved", "Unimproved")))
+tab1(nfhs5$toilet_g_f)
+```
+```{r}
+nfhs5 <- nfhs5 %>% mutate(toilet_g = 
+         case_when(toilet == 96 | toilet  == 97 ~ NA_real_,
+               toilet == 44 | toilet == 14| toilet == 15 | toilet == 23  ~ 2,
+               toilet == 30| toilet == 31 ~ 3,
+               TRUE ~ 1)) %>% 
+  mutate(toilet_g1_f = factor(toilet_g, c(1,2,3), c("Improved", "Unimproved", "No facility")))
+tab1(nfhs5$toilet_g1_f)
+```
+
+### Type of cooking fuel
+
+One variable, `v161` renamed as `fuel`:
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(fuel = v161)
+
+nfhs5 <- nfhs5 %>% 
+  mutate(fuel_f = to_factor(fuel))
+
+tab1(nfhs5$fuel_f)
+```
+
+Recoding into clean, unclen:
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(fuel_g = case_when(
+    fuel > 94 ~ NA_real_,
+    fuel < 5 ~ 1,
+    TRUE ~ 2))
+
+tab1(nfhs5$fuel_g)
+
+```
+Creating regrouped factor variable:
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(fuel_g_f = factor(fuel_g, c(1,2), c("Clean", "Unclean")))
+
+tab1(nfhs5$fuel_g_f)
+```
+### BPL card
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(bpl = sh75) %>% 
+  mutate(bpl_f = factor(bpl, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$bpl_f)
+
+
+```
+
+## Child's related variables
+
+### Sex
+Variable b4. Rename as sex.
+```{r}
+nfhs5 <- nfhs5 %>% rename(sex = b4)
+
+tab1(nfhs5$sex)
+
+nfhs5 <- nfhs5 %>% 
+  mutate(sex_f = to_factor(sex))
+
+tab1(nfhs5$sex_f)
+
+```
+
+
+### Age
+One variable `hw1` containing age in months. Rename as age and regrouped in 4 intervals.
+```{r}
+# nfhs5 <- nfhs5 %>% rename(age = hw1) Coded already from CDC in NFHS5_clean
+
+tab1(nfhs5$age)
+
+nfhs5 <- nfhs5 %>%  mutate(age_g = case_when(
+    age == NA ~ NA_character_,
+    age < 12 ~ "0-11",
+    age < 24 ~ "12-23",
+    age < 36 ~ "24-35",
+    age < 48 ~ "36-47",
+    age < 60 ~ "48-59",
+  )) %>% 
+  mutate(age_g_f = factor(age_g))
+
+tab1(nfhs5$age_g)
+tab1(nfhs5$age_g_f)
+
+```
+``
+### Place of delivery
+
+One variable `m15`
+
+```{r}
+nfhs5 <- nfhs5 %>% rename(delivery = m15)
+
+nfhs5 <- nfhs5 %>% mutate(delivery_f = to_factor(delivery))
+
+tab1(nfhs5$delivery_f)
+```
+Recoding answers for regrouping:
+```{r}
+nfhs5 <- nfhs5 %>% mutate(delivery_g = case_when(
+  delivery == NA ~ NA_real_,
+  delivery == 33 | delivery == 96 ~ 4,
+  delivery < 14 ~ 3,
+  delivery > 19 & delivery < 30 ~ 1,
+  delivery > 29 ~ 2,
+))
+
+tab1(nfhs5$delivery_g)
+```
+Factoring new regrouped variable:
+
+```{r}
+nfhs5 <- nfhs5 %>% mutate(delivery_g_f = factor(delivery_g, c(1,2,3,4), c("Public", "Private", "Home", "Other/NGO")))
+tab1(nfhs5$delivery_g_f)
+```
+
+### C section
+
+One variable `m17`
+
+```{r}
+nfhs5 <- nfhs5 %>% rename(csection = m17)
+nfhs5 <- nfhs5 %>% mutate(csection_f = to_factor(csection))
+
+tab1(nfhs5$csection_f)
+```
+### Birth order
+
+```{r}
+lookfor(nfhs5, "birth order")
+tab1(nfhs5$bord)
+```
+
+```{r}
+nfhs5 <- nfhs5 %>% mutate(bord_g = case_when(
+  bord > 3 ~ ">=4",
+  TRUE ~ as.character(bord)))
+
+tab1(nfhs5$bord_g)
+
+```
+
+```{r}
+nfhs5 <- nfhs5 %>% mutate(bord_g_f = factor(bord_g, c("1", "2","3", ">=4"), c("1", "2","3", ">=4")))
+tab1(nfhs5$bord_g_f)
+```
+
+### Season of interview
+
+Connected to seasonality of the disease. In India outbreaks of ARI occurs between September to March.
+
+v006     month of interview
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(interview.month = v006) %>% 
+  mutate(interview.quarter = case_when(
+    interview.month %in% 1:3 ~ "Q1",
+    interview.month %in% 4:6 ~ "Q2",
+    interview.month %in% 7:9 ~ "Q3",
+    interview.month %in% 10:12 ~ "Q4",
+  )) %>% 
+  mutate(interview.quarter_f = factor(interview.quarter, c("Q1", "Q2", "Q3", "Q4"), c("Q1", "Q2", "Q3", "Q4")))
+
+tab1(nfhs5$interview.month)
+tab1(nfhs5$interview.quarter_f)
+  
+```
+
+### Nutritional status
+
+Four variables with different measures. 
+
+hw70 -> stunting 
+
+hw72 -> wasting 
+
+hw71 -> underweight 
+
+hw73 -> bmi 
+
+849 hw70     height/age standard deviation (new who)   dbl+lbl 
+                                                                
+                                                                
+ 850 hw71     weight/age standard deviation (new who)   dbl+lbl 
+                                                                
+                                                                
+ 851 hw72     weight/height standard deviation (new wh~ dbl+lbl 
+                                                                
+                                                                
+ 852 hw73     bmi standard deviation (new who)          dbl+lbl 
+ 
+ 
+```{r}
+nfhs5 <- nfhs5 %>% rename(stunting = hw70)
+nfhs5 <- nfhs5 %>% rename(wasting = hw72)
+nfhs5 <- nfhs5 %>% rename(underweight = hw71)
+nfhs5 <- nfhs5 %>% rename(bmi = hw73)
+```
+#### Stunting
+Regrouping:
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(stunting_g = case_when(
+        is.na(stunting) == TRUE ~ NA_real_,
+        stunting > 9995 ~ NA_real_,
+        stunting < -300 ~ 2,
+        stunting < -200 ~ 1,
+        TRUE ~ 0
+  ))
+nfhs5 <- nfhs5 %>% mutate(stunting_g_f = factor(stunting_g, c(0, 1, 2), c("Not stunted", "Moderately stunted", "Severely stunted")))
+tab1(nfhs5$stunting_g)
+tab1(nfhs5$stunting_g_f)
+```
+#### Wasting
+```{r}
+# nfhs5 <- nfhs5 %>% In case we want to regroup it with overweight category
+#  mutate(wasting_g = case_when(
+#    wasting < -200 ~ 1,
+#    wasting > 200 ~ 2,
+#    TRUE ~ 0
+#  ))
+
+nfhs5 <- nfhs5 %>% 
+  mutate(wasting_g = case_when(
+    is.na(wasting) == TRUE ~ NA_real_,
+        wasting > 9995 ~ NA_real_,
+        wasting < -300 ~ 2,
+        wasting < -200 ~ 1,
+        TRUE ~ 0
+  ))
+
+nfhs5 <- nfhs5 %>% mutate(wasting_g_f = factor(wasting_g, c(0, 1, 2), c("Not wasted", "Moderately wasted", "Severely wasted")))
+tab1(nfhs5$wasting_g)
+tab1(nfhs5$wasting_g_f)
+```
+#### Underweight
+
+```{r}
+
+nfhs5 <- nfhs5 %>% 
+  mutate(underweight_g = case_when(
+   is.na(underweight) == TRUE ~ NA_real_,
+   underweight < -200 ~ 1,
+   underweight > 9995 ~ NA_real_,
+   #underweight > 200 ~ 2, #In case of third category with overweight, also change_f
+    TRUE ~ 0
+  ))
+
+nfhs5 <- nfhs5 %>% mutate(underweight_g_f = factor(underweight_g, c(0, 1), c("No", "Yes")))
+tab1(nfhs5$underweight_g)
+tab1(nfhs5$underweight_g_f)
+
+```
+#### BMI
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(bmi_g = case_when(
+   is.na(bmi) == TRUE ~ NA_real_,
+   bmi > 9995 ~ NA_real_,
+   bmi < -200 ~ 1,
+   bmi < -100 ~ 2,
+   bmi < 100 ~ 3,
+   bmi < 200 ~ 4,
+   bmi > 199 ~ 5
+  ))
+nfhs5 <- nfhs5 %>% 
+  mutate(bmi_g_f = factor(bmi_g, c(1,2,3,4,5), c("Severe thinness", "Thinness", "Normal weight", "Overweight", "Obesity")))
+
+nfhs5 <- nfhs5 %>% 
+  mutate(bmi_g2 = case_when(
+   is.na(bmi) == TRUE ~ NA_real_,
+   bmi > 9995 ~ NA_real_,
+   bmi < -100 ~ 1,
+   bmi < 100 ~ 2,
+   bmi > 99 ~ 3
+  ))
+nfhs5 <- nfhs5 %>% 
+  mutate(bmi_g2_f = factor(bmi_g2, c(1,2,3), c("Severe thinness or Thinness", "Normal weight", "Overweight or Obesity")))
+
+tab1(nfhs5$bmi_g2_f)
+tab1(nfhs5$bmi_g)
+tab1(nfhs5$bmi_g_f)
+```
+
+### Season of birth
+
+Not sure if doing this one
+
+
+### Birth weight
+
+```{r}
+nfhs5 <- nfhs5 %>% rename(lbw = m19)
+
+nfhs5 <- nfhs5 %>% 
+  mutate(lbw_g = 
+           case_when(
+             is.na(lbw) == TRUE ~ NA_real_,
+             lbw > 9995 ~ NA_real_,
+             lbw < 2500 ~ 1,
+             lbw > 2499 ~ 0))
+
+nfhs5 <- nfhs5 %>% 
+  mutate(lbw_g_f = factor(lbw_g, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$lbw_g_f)
+tab1(nfhs5$lbw_g)
+
+         
+         
+```
+### Breastfeeding
+
+```{r}
+nfhs5 <- nfhs5 %>% rename(breastfed = m4)
+
+nfhs5 <- nfhs5 %>% 
+  mutate(breastfed_g = 
+           case_when(
+             is.na(breastfed) == TRUE ~ NA_real_,
+             breastfed == 98 ~ NA_real_,
+             breastfed == 94 ~ 0,
+             breastfed == 95 ~ 1,
+             TRUE ~ 1,
+           ))
+
+tab1(nfhs5$breastfed_g)
+
+nfhs5 <- nfhs5 %>% 
+  mutate(breastfed_g_f = factor(breastfed_g, c(0,1), c("No", "Yes")))
+tab1(nfhs5$breastfed_g_f)
+
+```
+## Mother's related variables
+
+### Mother's age
+
+Father's age in `v730` and mother's age in `v012` and `v013` grouped in intervals.
+```{r}
+tab1(nfhs5$v730)
+```
+
+
+
+```{r}
+nfhs5 <- nfhs5 %>% rename(m.age = v012)
+nfhs5 <- nfhs5 %>% 
+  mutate(m.age_g_f = factor(v013, c(1,2,3,4,5,6,7), c("15-19","20-24","25-29", "30-34", "35-39", "40-44", "45-49")))
+tab1(nfhs5$m.age)
+tab1(nfhs5$m.age_g_f)
+
+```
+
+### Maternal age at birth
+
+
+ 14   v011     date of birth respondent (cmc)                       dbl       
+  b3       date of birth child (cmc)     
+
+Regrouped as maternal age at birth greater or to 20 y.o.
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(mageb = round((b3 - v011)/12, 0)) %>% 
+  mutate(mageb_g = case_when(
+    mageb >= 20 ~ 1,
+    mageb < 20 ~ 0
+  )) %>% 
+  mutate(mageb_g_f = factor(mageb_g, c(0,1), c("No", "Yes"))) %>% 
+  mutate(mageb_quadratic = mageb * mageb)
+
+
+tab1(nfhs5$mageb_g_f)
+```
+
+
+### Mother's education level
+
+Three variables per Mother. 
+
+Mother: v106, v107 and v149
+Father: v701, v702 and v729
+
+Mother:
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(m.edu = v106) %>% 
+  mutate(m.edu.att = case_when(
+    v149 == 0 ~ 0,
+    v149 == 1 | v149 == 2 ~ 1,
+    v149 == 3 ~ 2,
+    v149 == 4 | v149 == 5 ~ 3))
+
+nfhs5 <- nfhs5 %>% 
+  mutate(m.edu_f = factor(m.edu, c(0,1,2,3), c("No education", "Primary", "Secondary", "Higher"))) %>% 
+  mutate(m.edu.att_f = factor(m.edu.att, c(0,1,2,3), c("No education", "At least some primary", "Incomplete secondary", "Secondary or higher")))
+
+tab1(nfhs5$m.edu.att_f)
+tab1(nfhs5$v149)
+```
+Father: v701, v702 and v729
+
+```{r}
+tab1(nfhs5$v701)
+tab1(nfhs5$v729)
+```
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(f.edu = v701) %>% 
+  rename(f.edu.att = v729)
+nfhs5 <- nfhs5 %>% 
+  mutate(f.edu_f = factor(f.edu, c(0,1,2,3), c("No education", "Primary", "Secondary", "Higher"))) %>% mutate(f.edu.att_f = to_factor(f.edu.att))
+
+tab1(nfhs5$f.edu_f)
+tab1(nfhs5$f.edu.att_f)
+```
+### Mother's occupation 
+In both Mothers there's a 82% of missing data
+Father: v704 and v705
+Mother: v716, v717
+```{r}
+tab1(nfhs5$v716)
+tab1(nfhs5$v717)
+```
+
+### Both Mothers at home
+
+v504 -> together
+
+```{r}
+nfhs5 <- nfhs5 %>% rename(together = v504) %>% 
+  mutate(together_f = to_factor(together))
+tab1(nfhs5$together_f)
+```
+### Mother's marital status
+
+```{r}
+look_for(nfhs5,"marital")
+look_for(nfhs5, "s301")
+
+tab1(nfhs5$s301)
+tab1(nfhs5$v501)
+```
+### Tobacco use
+
+Found some information in hv252:
+
+hv252     frequency household members smoke inside the house   
+
+[0] never                      
+
+[1] daily                      
+
+[2] weekly                     
+
+[3] monthly                    
+
+[4] less than monthly   
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(smoke = hv252) %>% 
+  mutate(smoke_f = to_factor(smoke)) %>% 
+  mutate(smoke_g = case_when(
+    is.na(smoke) == TRUE ~ NA_real_,
+    smoke == 0 ~ 0,
+    smoke == 1 ~ 1,
+    smoke == 2 ~ 2,
+    smoke == 3 ~ 2,
+    smoke == 4 ~ 2
+  )) %>% 
+  mutate(smoke_g_f = factor(smoke_g, c(0,1,2), c("Never", "Daily", "Weekly or less")))
+
+tab1(nfhs5$smoke_f)
+tab1(nfhs5$smoke_g_f)
+
+```
+
+Only information from mothers available in v463z.
+```{r}
+tab1(nfhs5$v463z)
+nfhs5 <- nfhs5 %>% 
+  rename(m.tobacco = v463z) %>% 
+  mutate(m.tobacco = case_when(
+    m.tobacco == 1 ~ 0,
+    m.tobacco == 0 ~ 1
+  )) %>% 
+  mutate(m.tobacco_f = factor(m.tobacco, c(0,1), c("No","Yes")))
+
+tab1(nfhs5$m.tobacco)
+tab1(nfhs5$m.tobacco_f)
+```
+
+### Pregnacy complication
+
+s234
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(pregnancy = s234) %>% 
+  mutate(pregnancy_f = to_factor(pregnancy))
+tab1(nfhs5$pregnancy)
+tab1(nfhs5$pregnancy_f)
+```
+
+### Any children deceased
+
+v206     sons who have died        dbl                                                      
+v207     daughters who have died   dbl 
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(died = case_when(
+    v206 > 0 | v207 > 0 ~ 1,
+    TRUE ~ 0)) %>% 
+  mutate(died_f = factor(died, c(0,1), c("No","Yes")))
+
+tab1(nfhs5$died_f)
+
+
+```
+
+## Treatment related variables
+
+Q538 Asks if Q537 Did you seek advice or treatment for the illness from any source? Yes, then Where did you seek advice or treatment? Anywhere else?
+Q542 Asks if At any time during the illness, did (NAME) take any drugs for the illness?
+
+No treatment: 
+h32y     fever/cough: no treatment                            dbl+lbl  [0] no: received treatment
+                                                                       [1] yes: no treatment     
+h32z     fever/cough: medical treatment                       dbl+lbl  [0] no                    
+                                                                       [1] yes    
+
+nfhs5$h32y : 
+        Frequency   %(NA+)   %(NA-)
+0           32211     12.4     75.5
+1           10446      4.0     24.5
+<NA>       216970     83.6      0.0
+  Total    259627    100.0    100.0
+nfhs5$h32z : 
+        Frequency   %(NA+)   %(NA-)
+0           13838      5.3     32.4
+1           28819     11.1     67.6
+<NA>       216970     83.6      0.0
+  Total    259627    100.0    100.0
+  
+ ml13y    nothing taken and didn't seek treatment for fever/cough      dbl+lbl  [0] no                     
+                                                                                    [1] yes, nothing taken     
+ ml13z    don't know if or what was taken for fever/cough              dbl+lbl  [0] no                     
+                                                                                    [1] yes, don't know        
+nfhs5$ml13y : 
+        Frequency   %(NA+)   %(NA-)
+0           35913     13.8     84.2
+1            6744      2.6     15.8
+<NA>       216970     83.6      0.0
+  Total    259627    100.0    100.0
+nfhs5$ml13z : 
+        Frequency   %(NA+)   %(NA-)
+0           32640     12.6     76.5
+1           10017      3.9     23.5
+<NA>       216970     83.6      0.0
+  Total    259627    100.0    100.0
+```{r}
+tab1(nfhs5$ml13y)
+tab1(nfhs5$ml13z)
+```
+
+### Source of treatment
+
+624 h46a     place first sought treatment for fever
+625 h46b     days after fever sought advice or treatment
+
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(h46a_f = to_factor(h46a))
+```
+
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(source = case_when(
+    h32y == 1 ~ 0,  # No treatment
+    h46a == 11 ~ 1,
+    h46a == 12 ~ 2, 
+    h46a == 13 ~ 3,
+    h46a == 14 ~ 4,
+    h46a == 15 ~ 5,
+    h46a == 16 ~ 6,
+    h46a == 17 ~ 7,
+    h46a == 18 ~ 8,
+    h46a == 19 ~ 9,
+    h46a == 21 ~ 10,
+    h46a == 22 ~ 11,
+    h46a == 23 ~ 12,
+    h46a == 24 ~ 13,
+    h46a == 25 ~ 14,
+    h46a == 26 ~ 15,
+    h46a == 31 ~ 16,
+    h46a == 32 ~ 17,
+    h46a == 33 ~ 18,
+    h46a == 34 ~ 19,
+    h46a == 35 ~ 20,
+    h46a == 36 ~ 21,
+    h46a == 37 ~ 22,
+    h46a == 96 ~ 23))
+
+nfhs5 <- nfhs5 %>% 
+  mutate(source_f = factor(source, c(0:23), c("No treatment", "public: govt./municipal hospital", "public: vaidya/hakim/homeopath (ayush)", "public: govt. dispensary ", "public: uhc/uhp/ufwc", "public: chc/rural hospital/block phc", "public: phc/additional phc", "public: sub-centre/anm", "public: govt. mobile clinic", "public: camp", "private: hospital", "private: pharmacy/drugstore", "private: doctor/clinic", "private: paramedic", "private: vaidya/hakim/homeopath (ayush)","other private health", "ngo or trust hospital/clinic", "public: anganwadi/icds centre", "public: asha ", "other public health", "shop", "traditional healer", "friend/relative", "other" )))
+tab1(nfhs5$source)
+```
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(source_g1 = case_when(
+    h32y == 1 ~ 0,  # No treatment
+    h46a == 11 ~ 1, 
+    h46a == 12 ~ 3, # Public Ayush
+    h46a == 13 ~ 1, 
+    h46a == 14 ~ 1,
+    h46a == 15 ~ 1,
+    h46a == 16 ~ 1,
+    h46a == 17 ~ 1,
+    h46a == 18 ~ 1,
+    h46a == 19 ~ 1,
+    h46a == 21 ~ 2, # Private
+    h46a == 22 ~ 3, # Pharmacy
+    h46a == 23 ~ 2,
+    h46a == 24 ~ 2,
+    h46a == 25 ~ 3, # Private Ayush
+    h46a == 26 ~ 2,
+    h46a == 31 ~ 3,
+    h46a == 32 ~ 3,
+    h46a == 33 ~ 3,
+    h46a == 34 ~ 1,
+    h46a == 35 ~ 1,
+    h46a == 36 ~ 1,
+    h46a == 37 ~ 1,
+    h46a == 96 ~ 3))%>% 
+  mutate(source_g1_f = factor(source_g1, c(0,1,2,3), c("No Treatment","Public", "Private", "Pharmacy/Unregulated")))
+
+tab1(nfhs5$source_g1_f)
+```
+
+
+Regrouped according to Bangladesh paper:
+
+(4) Others includes ayush, traditional healer, other, shop, friends/relative
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(source_g2 = case_when(
+    source == 0 ~ 0, # No treatment
+    source == 1 ~ 1,
+    source == 2 ~ 4, # Public ayush
+    source == 3 ~ 1,
+    source == 4 ~ 1,
+    source == 5 ~ 1,
+    source == 6 ~ 1,
+    source == 7 ~ 1,
+    source == 8 ~ 1,
+    source == 9 ~ 1,
+    source == 10 ~ 2,
+    source == 11 ~ 3, # Pharmacy
+    source == 12 ~ 2,
+    source == 13 ~ 2,
+    source == 14 ~ 4, # Private ayush
+    source == 15 ~ 2,
+    source == 16 ~ 2, # NGO or trust hospital/clinic
+    source == 17 ~ 1,
+    source == 18 ~ 1,
+    source == 19 ~ 1, 
+    source == 20 ~ 4, # Shop
+    source == 21 ~ 4, # Traditional healer
+    source == 22 ~ 4, # Friend relative
+    source == 23 ~ 4, # Other
+  )) %>% 
+  mutate(source_g2_f = factor(source_g2, c(0, 1,2,3,4), c("No treatment","Public", "Private", "Pharmacy", "Others")))
+
+tab1(nfhs5$source_g2_f)
+
+```
+
+
+### Distance to health care
+```{r}
+look_for(nfhs5, "distance")
+tab1(nfhs5$v467d)
+```
+
+
+### Days after treatment
+
+Days after onset of symptoms that children sought advice or treatment
+
+h46b     days after fever or cough sought advice or treatment
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(days.after = h46b) %>% 
+  mutate(days.after = replace(days.after, days.after == 98, NA_real_)) %>% 
+  mutate(days.after_g = replace(days.after, days.after %in% 4:10, 4)) %>% 
+  mutate(days.after_g_f = factor(days.after_g, c(0:4), c("Same day", "1", "2", "3", ">=4")))
+
+tab1(nfhs5$days.after)
+tab1(nfhs5$days.after_g_f)
+```
+
+
+### Amount offered to drink
+
+During ARI episode.
+
+h31d drink
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(drink = h31d) %>% 
+  mutate(drink = replace(drink, drink == 8, NA_real_)) %>% 
+  mutate(drink_f = factor(drink, c(0,2,3,4,5), c("Nothing to drink", "Much less", "Somewhat less", "About the same", "More")))%>% 
+  mutate(drink_g = case_when(
+    is.na(drink) == TRUE ~ NA_real_,
+    drink == 0 ~ 0,
+    drink == 2 | drink == 3 ~ 1,
+    drink == 4 ~ 2,
+    drink == 5 ~ 3)) %>% 
+  mutate(drink_g_f = factor(drink_g, c(0,1,2,3), c("No drink", "Less", "Same", "More")))
+  
+tab1(nfhs5$drink_f)
+```
+
+
+### Amount offered to eat
+h31e eat
+
+Combined Stopped food and Never gave food
+
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(eat = h31e) %>% 
+  mutate(eat = replace(eat, eat == 8, NA_real_)) %>% 
+  mutate(eat_f = factor(eat, c(0,1,2,3,4,5), c("Stopped food", "Never gave food", "Much less", "Somewhat less", "About the same", "More"))) %>% 
+    mutate(eat_g = case_when(
+    is.na(eat) == TRUE ~ NA_real_,
+    eat == 0 | eat == 1 ~ 0,
+    eat == 2 | eat == 3 ~ 1,
+    eat == 4 ~ 2,
+    eat == 5 ~ 3)) %>% 
+  mutate(eat_g_f = factor(eat_g, c(0,1,2,3), c("No food", "Less", "Same", "More")))
+tab1(nfhs5$eat)
+tab1(nfhs5$eat_f)
+```
+
+## Health care related variables 
+
+### Access to health care
+
+h1       has health card                                             dbl+lbl 
+
+v481 covered by health insurance
+
+s356     met with an anganwadi worker, asha or other community health worker in last 3 months
+
+Create a composite variable containing info about reporting a problem in getting medical help:
+v467b    getting medical help for self: getting permission to go
+v467c    getting medical help for self: getting money needed for treatment
+v467d    getting medical help for self: distance to health facility
+v467e    getting medical help for self: having to take transport
+v467f    getting medical help for self: not wanting to go alone
+v467g    getting medical help for self: concern no female health provider
+v467h    getting medical help for self: concern no provider
+v467i    getting medical help for self: concern no drugs available         
+
+Answers:
+[0] no problem       
+[1] big problem      
+[2] not a big problem
+
+#### Access problems
+
+Creating a composite variable that includes all of the above listed problems. 
+
+Access = score of any problems from 0-8
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(v467b = replace(v467b, v467b %in% 1:2, 1)) %>% 
+  mutate(v467c = replace(v467c, v467c %in% 1:2, 1)) %>%
+  mutate(v467d = replace(v467d, v467d %in% 1:2, 1)) %>% 
+  mutate(v467e = replace(v467e, v467e %in% 1:2, 1)) %>% 
+  mutate(v467f = replace(v467f, v467f %in% 1:2, 1)) %>% 
+  mutate(v467g = replace(v467g, v467g %in% 1:2, 1)) %>% 
+  mutate(v467h = replace(v467h, v467h %in% 1:2, 1)) %>% 
+  mutate(v467i = replace(v467i, v467i %in% 1:2, 1)) %>%  
+  mutate(access = v467b + v467c + v467d + v467e + v467f + v467g + v467h + v467i)
+```
+
+
+#### Visit in the last three months: three variables
+
+ 888 s359     met with an anm or lhv in last 3 months                           dbl+lbl 
+893  s361     met with an anganwadi worker, asha or other community health worker in last 3 mo dbl+lbl  [0] no 
+                                                                                                         [1] yes
+923 s368     visited a health facility or camp for self or children in last 3~ dbl+lbl 
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(visit3mo = s361) %>% 
+  mutate(visit3mo_f = to_factor(visit3mo))
+
+tab1(nfhs5$visit3mo_f)
+```
+
+#### Insurance
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(insurance = v481) %>% 
+  mutate(insurance_f = to_factor(insurance))
+
+tab1(nfhs5$insurance_f)
+```
+#### Distance to health care
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(distance = v467d) %>% 
+  mutate(distance_f = factor(distance, c(0,1,2), c("No problem", "Big problem", "Small problem"))) %>% 
+  mutate(distance_g = replace(distance, distance == 2, 1)) %>% 
+  mutate(distance_g_f = factor(distance_g, c(0,1), c("No", "Yes")))
+  
+tab1(nfhs5$distance_f)
+tab1(nfhs5$distance_g_f)
+```
+
+### Vaccination card
+
+h1       has health card                                   dbl+lbl  [0] no card               
+                                                                         [1] yes, seen             
+                                                                         [2] yes, not seen         
+                                                                         [3] no longer has card    
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(healthcard = h1) %>% 
+  mutate(healthcard = replace(healthcard, healthcard == 3, 0)) %>% 
+  mutate(healthcard_f = factor(healthcard, c(0,1,2), c("No card", "Yes, seen", "Yes, not seen")))
+
+tab1(nfhs5$healthcard)
+
+```
+
+### Vaccination
+
+h10      ever had vaccination                              dbl+lbl  
+[0] no                    
+[1] yes                   
+[8] don't know  
+                                                                      
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(vaccination.ever = h10) %>% 
+  mutate(vaccination.ever = replace(vaccination.ever, vaccination.ever == 8, NA_real_)) %>% 
+  mutate(vaccination.ever_f = factor(vaccination.ever, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$vaccination.ever_f)
+```
+
+Create variables for 3+ doses of DPT, 3+ doses of polio, bcg, and measles vaccination, as well as one for having all ("fully immunized"):
+
+#### DPT
+
+```{r}
+# Create a variable for number of doses (dpt) and other one for fully immunization (dpt3)
+nfhs5 <- nfhs5 %>% 
+  mutate(h3n = case_when(
+    h3 == 8 ~ NA_real_,
+    h3 == 0 ~ 0,
+    h3 %in% 1:3 ~ 1)) %>% 
+  mutate(h5n = case_when(
+    h5 == 8 ~ NA_real_,
+    h5 == 0 ~ 0,
+    h5 %in% 1:3 ~ 1)) %>% 
+  mutate(h7n = case_when(
+    h7 == 8 ~ NA_real_,
+    h7 == 0 ~ 0,
+    h7 %in% 1:3 ~ 1)) %>%
+  mutate(dpt = h3n + h5n + h7n) %>% 
+  mutate(dpt3 = case_when(
+    dpt %in% 0:2 ~ 0,
+    dpt == 3 ~ 1,
+    is.na(dpt) == TRUE ~ NA_real_)) %>% 
+  mutate(dpt3_f = factor(dpt3, c(0,1), c("No", "Yes")))
+    
+tab1(nfhs5$dpt)
+tab1(nfhs5$dpt3)
+```
+#### Polio
+
+```{r}
+# Create a variable for number of doses (polio) and other one for fully immunization (polio3)
+nfhs5 <- nfhs5 %>% 
+  mutate(h4n = case_when(
+    h4 == 8 ~ NA_real_,
+    h4 == 0 ~ 0,
+    h4 %in% 1:3 ~ 1)) %>% 
+  mutate(h6n = case_when(
+    h6 == 8 ~ NA_real_,
+    h6 == 0 ~ 0,
+    h6 %in% 1:3 ~ 1)) %>% 
+  mutate(h8n = case_when(
+    h8 == 8 ~ NA_real_,
+    h8 == 0 ~ 0,
+    h8 %in% 1:3 ~ 1)) %>%
+  mutate(polio = h4n + h6n + h8n) %>% 
+  mutate(polio3 = case_when(
+    polio %in% 0:2 ~ 0,
+    polio == 3 ~ 1,
+    is.na(polio) == TRUE ~ NA_real_)) %>% 
+  mutate(polio3_f = factor(polio3, c(0,1), c("No", "Yes")))
+    
+tab1(nfhs5$polio)
+tab1(nfhs5$polio3)
+```
+#### BCG vaccine
+Only 1 dose
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(bcg = case_when(
+    h2 == 8 ~ NA_real_,
+    h2 == 0 ~ 0,
+    h2 %in% 1:3 ~ 1)) %>% 
+  mutate(bcg_f = factor(bcg, c(0,1), c("No", "Yes")))
+    
+tab1(nfhs5$bcg)
+tab1(nfhs5$bcg_f)
+```
+#### Measles vaccine
+1 dose
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(measles = case_when(
+    h9 == 8 ~ NA_real_,
+    h9 == 0 ~ 0,
+    h9 %in% 1:3 ~ 1)) %>% 
+  mutate(measles_f = factor(measles, c(0,1), c("No", "Yes")))
+    
+tab1(nfhs5$measles)
+tab1(nfhs5$measles_f)
+```
+#### Full immunization
+Composite of all previous ones
+```{r}
+nfhs5 <- nfhs5 %>% 
+  mutate(fimm = case_when(
+    bcg == 0 | dpt3 == 0 | polio3 == 0 | measles == 0 ~ 0,
+    bcg == 1 & dpt3 == 1 & polio3 == 1 & measles == 1 ~ 1
+  )) %>% 
+  mutate(fimm_f = factor(fimm, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$fimm)
+```
+
+### MCP card
+
+s412     receive mother and child protection card after registration dbl+lbl  [0] no 
+                                                                              [1] yes
+                        
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(mcp = s412) %>% 
+  mutate(mcp_f = to_factor(mcp))
+tab1(nfhs5$mcp_f)
+```
+### Anganwadi or ICDS benefits
+
+s558     child received benefits from anganwadi/icds centre, last 12 months               dbl+lbl  [0] no                                   
+                                                                                                   [1] yes
+                                                                                                   
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(icds = s558) %>% 
+  mutate(icds_f = to_factor(icds))
+tab1(nfhs5$icds_f)
+```
+
+### Intestinal parasite medication
+
+ h43      drugs for intestinal parasites in last 6 months dbl+lbl  [0] no        
+                                                                       [1] yes       
+                                                                       [8] don't know
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(parasites = h43) %>% 
+  mutate(parasites = replace(parasites, parasites == 8, NA_real_)) %>% 
+  mutate(parasites_f = factor(parasites, c(0,1), c("No", "Yes")))
+tab1(nfhs5$parasites)
+tab1(nfhs5$parasites_f)
+```
+### Vitamin A supplementation
+ h34      vitamin a in last 6 months                                    dbl+lbl  [0] no                        
+                                                                                     [1] yes                       
+                                                                                     [8] don't know 
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(vitA = h34) %>% 
+  mutate(vitA = replace(vitA, vitA == 8, NA_real_)) %>% 
+  mutate(vitA_f = factor(vitA, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$vitA_f)
+```
+### Iron supplementation
+
+ h42      taking iron pills, sprinkles or syrup                dbl+lbl  [0] no        
+                                                                            [1] yes       
+                                                                            [8] don't know
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(iron = h42) %>% 
+  mutate(iron = replace(iron, iron == 8, NA_real_)) %>% 
+  mutate(iron_f = factor(iron, c(0,1), c("No", "Yes")))
+
+tab1(nfhs5$iron)
+```
+
+### Mother allowed to go to health care
+
+  s928b    usually allowed to go to the health facility                           dbl+lbl      [0] not at all                     
+                                                                                               [1] alone                          
+                                                                                               [2] with someone else only  
+
+```{r}
+nfhs5 <- nfhs5 %>% 
+  rename(allowed = s930b) %>% 
+  mutate(allowed_f = to_factor(allowed))
+
+tab1(nfhs5$allowed_f)
+```
+
+## Saving the recoded data as .Rds
+
+```{r}
+nfhs5_ari <- nfhs5 %>% 
+  dplyr::select(v001, v005, v023, v139, place, religion, state, district, wi, hhsize, caste, media.reading, media.radio, media.tv, media, water.source, toilet, fuel, handwash.place_g, handwash.water, handwash.soap, sex, bord, delivery, csection, age, stunting_g, wasting_g, underweight_g, bmi_g, lbw_g, breastfed_g, m.age, mageb, mageb_quadratic, m.edu, m.edu.att, together, m.tobacco, smoke, pregnancy, died, source, source_g1, source_g2, days.after, eat, drink, distance_g, access, visit3mo, insurance, healthcard, vaccination.ever, mcp,allowed, icds, parasites, vitA, iron, ends_with("_f"), ends_with("_g"), ends_with("_g1"), ends_with("_g2"), dpt, dpt3, polio, polio3, bcg, measles, fimm)
+```
+
+
+```{r}
+saveRDS(nfhs5_ari, "nfhs5_ari.Rds")
+saveRDS(nfhs5_ari, "C:/Hector/IDOH/McGill/Master thesis/NFHS/Datasets/NFHS_analysis/nfhs5_ari.Rds")
+```

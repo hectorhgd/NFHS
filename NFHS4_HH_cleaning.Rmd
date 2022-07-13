@@ -1,0 +1,74 @@
+---
+title: "NFHS4 HH cleaning"
+author: "Hector"
+date: '2022-05-18'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# NFHS4 Household Data cleaning
+
+## Objectives
+
+-   Input the household dataset from .DTA file.
+
+-   Create a .R dataset easier and quicker to handle that contains the key values for the merging with the birth record dataset and the variables that we are interested in merging.
+
+
+### Loading the dataset
+
+First of all we will load the necessary packages:
+
+```{r}
+library(tidyverse)
+library(labelled) # Contains the look_for() function
+library(epiDisplay) # tab1()
+```
+
+
+Pushing a bit the RAM memory by doing garbage collection (RAM memory cleaning) and raising the memory.limit:
+```{r}
+gc()
+memory.limit()
+memory.limit(size = 60000)
+```
+
+Then we will proceed to load the NFHS dataset onto R.
+
+```{r}
+library(haven)
+ #hhsurvey <- read_dta("IAHR74FL.DTA")
+```
+
+### Save as R data file, for faster loading.
+
+```{r}
+# saveRDS(hhsurvey, file = "IAHR74FL.Rds")
+hhsurvey <- readRDS(file = "IAHR74FL.Rds")
+```
+
+Selecting only the variables necessary for merging and washing hands:
+
+ 63  hv230a   place where household members wash their hands dbl+lbl  [1] observed                          
+                                                                      [2] not observed: not in dwelling     
+                                                                      [3] not observed: no permission to see
+                                                                      [4] not observed: other reason        
+ 64  hv230b   presence of water at hand washing place        dbl+lbl  [0] water not available               
+                                                                      [1] water is available 
+```{r}
+tab1(hhsurvey$hv252)
+```
+
+```{r}
+hhsurvey_small <- hhsurvey %>% dplyr::select(hhid, hv000, hv001, hv002, hv003, hv004, hv005, hv230a, hv230b, hv232, hv232b, hv232y, hv252, sh58)
+```
+
+
+Saving the resulted dataset:
+
+```{r}
+saveRDS(hhsurvey_small, file = "HHsurvey_small_merge.Rds")
+```

@@ -1,0 +1,92 @@
+---
+title: "NFHS5 Cleaning"
+author: "Hector"
+date: '2022-05-20'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# nfhs5 Data cleaning
+
+## Objectives
+
+-   Input the dataset.
+
+-   Reduce the number of obs. to children <60 months.
+
+-   Delete variables containing all NA's values
+
+
+### Loading the dataset
+
+First of all we will load the necessary packages:
+
+```{r}
+library(tidyverse)
+library(labelled) # Contains the look_for() function
+library(epiDisplay) # tab1()
+```
+
+
+Pushing a bit the RAM memory by doing garbage collection (RAM memory cleaning) and raising the memory.limit:
+```{r}
+gc()
+memory.limit()
+memory.limit(size = 60000)
+```
+
+Then we will proceed to load the NFHS dataset onto R.
+
+```{r}
+library(haven)
+IABR7AFL <- read_dta("IABR7AFL.DTA")
+
+```
+
+Save as R data file, for faster loading.
+
+```{r}
+saveRDS(IABR7AFL, file = "IABR7AFL.Rds")
+nfhs5 <- readRDS(file = "IABR7AFL.Rds")
+```
+
+Selecting only the rows corresponding to U5 children and saving the new dataset:
+
+B19:	 	 	Age of child, or months since birth for children who have died, in completed months, computed as: B19 = int( (V008A - B18) / 30.4375)
+
+503  b8       current age of child                                       dbl 
+824  hw1      na - child's age in months                                 dbl    
+
+498 b3       date of birth (cmc)                                     dbl
+11  v008     date of interview (cmc)                                 dbl   
+
+
+```{r}
+nfhs5short <- nfhs5 %>% 
+  filter(b19 < 60) %>% 
+  rename(age = b19)
+saveRDS(nfhs5short, file = "IABR7AFL_under5.Rds")
+
+```
+
+
+Loading a function for selecting all columns that does not contain all NAs.
+```{r}
+not_all_na <- function(x) any(!is.na(x))
+
+nfhs5shorter <- nfhs5short %>% select_if(not_all_na)
+```
+
+Saving the resulted dataset:
+
+```{r}
+saveRDS(nfhs5shorter, file = "IABR7AFL_under5_short.Rds")
+```
+
+
+```{r}
+tab1(nfhs5shorter$age)
+```

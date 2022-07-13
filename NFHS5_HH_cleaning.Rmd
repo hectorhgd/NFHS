@@ -1,0 +1,65 @@
+---
+title: "NFHS5 HH cleaning"
+author: "Hector"
+date: '2022-05-18'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### Loading the dataset
+
+First of all we will load the necessary packages:
+
+```{r}
+library(tidyverse)
+library(labelled) # Contains the look_for() function
+library(epiDisplay) # tab1()
+```
+
+
+Pushing a bit the RAM memory by doing garbage collection (RAM memory cleaning) and raising the memory.limit:
+```{r}
+gc()
+memory.limit()
+memory.limit(size = 100000)
+```
+
+Then we will proceed to load the NFHS dataset onto R.
+
+```{r}
+library(haven)
+#hhsurvey5 <- read_dta("IAHR7AFL.DTA")
+```
+
+### Save as R data file, for faster loading.
+
+```{r}
+#saveRDS(hhsurvey5, file = "IAHR7AFL.Rds")
+
+hhsurvey5 <- readRDS(file = "IAHR7AFL.Rds")
+```
+
+Selecting only the variables necessary for merging and washing hands:
+
+ 63  hv230a   place where household members wash their hands dbl+lbl  [1] observed                          
+                                                                      [2] not observed: not in dwelling     
+                                                                      [3] not observed: no permission to see
+                                                                      [4] not observed: other reason        
+ 64  hv230b   presence of water at hand washing place        dbl+lbl  [0] water not available               
+
+
+
+
+```{r}
+hhsurvey5_small <- hhsurvey5 %>% dplyr::select(hhid, hv000, hv001, hv002, hv003, hv004, hv005, hv230a, hv230b, hv232, hv232b, hv232y, hv252, sh75)
+```
+
+
+Saving the resulted dataset:
+
+```{r}
+saveRDS(hhsurvey5_small, file = "hhsurvey5_small_merge.Rds")
+```

@@ -1,0 +1,169 @@
+---
+title: "NFHS ARI Table 2"
+author: "Hector"
+date: '2022-06-27'
+output: word_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# NFHS Analysis Table 1 weighted
+
+## Objectives
+
+- To create a table containing the Mean (SD/SE) for continuous variables and Frequency (%) for categorical/dichotomous variables.
+
+- Table 2 with weighted data describing the treatment-related variables.
+
+For the weighted data we will use the `gtsummary` package.
+
+### Loading packages
+
+```{r}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)   # data management + ggplot2 graphics
+library(survey)      # for survey functions
+library(srvyr)       # dplyr wrapper for survey package
+library(gtsummary)   # wrapper for survey package to produce tables
+
+library(labelled) # Contains the look_for() function
+library(epiDisplay) # tab1()
+```
+
+## Merging the datasets
+
+```{r}
+nfhs4 <- readRDS("nfhs4_ari.Rds")
+nfhs5 <- readRDS("nfhs5_ari.Rds")
+
+nfhs4 <- nfhs4 %>% mutate(wave = "NFHS4")
+nfhs5 <- nfhs5 %>% mutate(wave = "NFHS5")
+
+nfhs <- bind_rows(nfhs4, nfhs5)
+
+```
+
+## Loading the dataset
+```{r}
+write_rds(nfhs,"nfhs_ari_all.Rds")
+nfhs <- read_rds("nfhs_ari_all.Rds")
+```
+
+
+## Weights and survey design
+
+```{r}
+nfhs <- nfhs %>% 
+  mutate(wgt = v005/1000000) %>%  # Turning wewights into decimals
+  mutate(strata = as.character(paste(nfhs$state_f, nfhs$place_f, sep = " "))) # Strata based on region and urban/rural
+nfhs$days.after <- labelled::unlabelled(nfhs$days.after)
+nfhs_design <- nfhs %>%
+  as_survey_design(ids = v001, # cluster ids
+                   weights = wgt, # weight variable created above
+                   strata = strata, # strata
+                   nest = TRUE,
+                   check.strata = TRUE
+                  )
+```
+
+Treating single PSUs as 'Certainty': a single-PSU stratum makes no contribution to the variance (for multistage sampling it makes no contribution at that level of sampling). This is an alternative to specifying fpc, and might be useful for compatibility with other software. 
+
+```{r}
+options(survey.lonely.psu="certainty")
+```
+
+## Table 2. Descriptive analysis by urban/rural
+
+```{r}
+theme_gtsummary_compact(set_theme = TRUE, font_size = NULL)
+
+
+table1 <- nfhs_design %>%
+    mutate_if(is.factor,
+            fct_explicit_na,
+            na_level = "Missing") %>%  ### Setting missing variables as a category to obtain percentage of missing values
+  tbl_svysummary(
+    by = place_f,
+    missing_text = "Missing",
+    type = list(all_continuous() ~ "continuous",
+                all_categorical() ~ "categorical",
+                days.after ~ "continuous"),
+    statistic = list(all_continuous() ~ "{mean} (+/-{sd})",
+                     all_categorical() ~ "{n} ({p}%)",
+                     all_dichotomous() ~ "{n} ({p}%)"),
+    digits = list(all_continuous() ~ c(1, 1),
+                  all_categorical() ~ c(0, 1),
+                  all_dichotomous() ~ c(1, 1)),
+    
+    include = c(
+# Demographics
+                   
+# Treatment related variables
+source_g1_f,
+days.after,
+eat_g_f,
+drink_g_f),
+    label = c(
+# Treatment related variables
+source_g1_f ~ "Source of treatment",
+days.after ~ "Days after treatment",
+eat_g_f ~ "Amount given to eat",
+drink_g_f ~ "Amount given to drink")) %>% 
+  add_overall() %>% 
+  modify_header(c(stat_1, stat_2) ~ "**{level}**<br>N = {n} ({style_percent(p, digits = 1)}%)") %>%
+  bold_labels() %>% 
+  modify_header(label ~ "") %>%
+  modify_footnote(
+    all_stat_cols() ~ "Mean (SD) or Frequency (%)")
+
+table1_flex <- as_flex_table(table1)
+table1_flex
+```
+
+## Table 2. Descriptive analysis by outcome
+
+```{r}
+theme_gtsummary_compact(set_theme = TRUE, font_size = NULL)
+table2 <- nfhs_design %>%
+  tbl_strata(
+    strata = place_f,
+    .tbl_fun =
+      ~ .x %>% 
+  tbl_svysummary(
+    by = antibiotics_f,
+    missing_text = "Missing",
+    type = list(all_continuous() ~ "continuous",
+                all_categorical() ~ "categorical"),
+    statistic = list(all_continuous() ~ "{mean} (+/-{sd})",
+                     all_categorical() ~ "{n} ({p}%)",
+                     all_dichotomous() ~ "{n} ({p}%)"),
+    digits = list(all_continuous() ~ c(1, 1),
+                  all_categorical() ~ c(0, 1),
+                  all_dichotomous() ~ c(1, 1)),
+    
+    include = c(
+# Demographics
+                   
+# Treatment related variables
+source_g1_f,
+days.after_g_f,
+eat_g_f,
+drink_g_f),
+    label = c(
+# Treatment related variables
+source_g1_f ~ "Source of treatment",
+days.after_g_f ~ "Days after treatment",
+eat_g_f ~ "Amount given to eat",
+drink_g_f ~ "Amount given to drink")) %>% 
+  add_overall() %>% 
+  modify_header(c(stat_1, stat_2) ~ "**{level}**<br>N = {n} ({style_percent(p, digits = 1)}%)") %>%
+  bold_labels() %>% 
+  modify_header(label ~ "") %>%
+  modify_footnote(
+    all_stat_cols() ~ "Mean (SD) or Frequency (%)"))
+
+table2_flex <- as_flex_table(table2)
+table2_flex
+```
