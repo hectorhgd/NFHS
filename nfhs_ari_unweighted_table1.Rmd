@@ -1,0 +1,317 @@
+---
+title: "NFHS Analysis Table 1"
+author: "Hector"
+date: '2022-05-27'
+output: html_document
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# NFHS Analysis Table 1 unweighted
+
+## Objective
+
+- To create a table 1 desvribing the different predictor variables and containing the Mean (SD/SE) for continuous variables and Frequency (%) for categorical/dichotomous variables.
+
+Table S2 containing unweighted treatment variables was originally included in table 1 and separated manually into table S2.
+
+The `table1` package can do this with the unweighted data. For the weighted data we will use the `gtsummary` package.
+
+```{r}
+knitr::opts_chunk$set(echo = FALSE)
+
+library(tidyverse)   # data management + ggplot2 graphics
+library(tsibble)     # handle time series datasets
+library(survey)      # for survey functions
+library(srvyr)       # dplyr wrapper for survey package
+library(gtsummary)   # wrapper for survey package to produce tables
+
+library(table1)
+library(labelled) # Contains the look_for() function
+library(epiDisplay) # tab1()
+```
+
+## Merging the datasets
+
+```{r}
+nfhs4 <- readRDS("nfhs4_ari.Rds")
+nfhs5 <- readRDS("nfhs5_ari.Rds")
+
+nfhs4 <- nfhs4 %>% mutate(wave = "NFHS4")
+nfhs5 <- nfhs5 %>% mutate(wave = "NFHS5")
+
+nfhs <- bind_rows(nfhs4, nfhs5)
+
+```
+
+## Loading the dataset
+```{r}
+write_rds(nfhs,"nfhs_ari_all.Rds")
+nfhs <- read_rds("nfhs_ari_all.Rds")
+```
+
+## Table 1. Descriptive analysis.
+
+Analysis of our target population kids with ARI (N = 16972)
+
+There are two ways of using the function `table1()` either as a formula or listing the variables and the strata.
+
+It is important to label correctly the different variables with the names that are appearing at the table. Also for levels of categorical variables.
+
+```{r}
+label(nfhs$sex_f) <- "Sex"
+label(nfhs$age) <- "Age"
+units(nfhs$age) <- "months"
+```
+
+Formula structure:
+
+table1(~ var1 + var2 + var3 | place_f*antibiotics_f, data=nfhs)
+
+Listing structure and re-labelling factor variables:
+
+```{r}
+attach(nfhs)
+nfhs$antibiotics_f <- factor(antibiotics_f, labels = c("No", "Yes"))
+nfhs$handwash.soap_f <- factor(handwash.soap_f, labels = c("No", "Yes"))
+nfhs$visit3mo_f <- factor(visit3mo_f, labels = c("No", "Yes"))
+nfhs$insurance_f <- factor(insurance_f, labels = c("No", "Yes"))
+nfhs$icds_f <- factor(icds_f, labels = c("No", "Yes"))
+nfhs$wi_f <- factor(wi_f, labels = c("Poorest", "Poorer", "Middle", "Richer", "Richest"))
+nfhs$sex_f <- factor(sex_f, labels = c("Male", "Female"))
+nfhs$media_f <- factor(media_f, 
+                         labels = c("Not at all", "Less than once a week", 
+                                   "At least once a week", "Almost every day"))
+detach(nfhs)
+```
+            
+## Table 1 NFHS merged by urban/rural.
+
+```{r}
+labels <- list(
+    variables=list(# Outcome variables
+      
+                   antibiotics_f = "Were given antibiotics",
+                   
+                   # Demographics
+                   wi_f = "Wealth index",
+                   religion_f = "Religion",
+                   caste_f = "Caste/Tribe",
+      
+                   # Mother's associated variables
+                   m.age = "Mother's age (years)",
+                   m.edu.att_f = "Educational level",
+                   
+                   # Household variables
+                   hhsize = "Household size",
+                   died_f = "Prior children deceased",
+                   fuel_g_f = "Type of cooking fuel",
+                   water.source_g_f = "Source of drinking water",
+                   toilet_g_f = "Toilet facility",
+                   handwash.soap_f = "Soap for handwashing",
+                   media_f = "Media accessibility",
+                   bpl_f = "Below Poverty Line card",
+                   smoke_g_f = "Smoke exposure",
+                   
+                   # Child related variables
+                   age = "Age (months)",
+                   sex_f = "Sex",
+                   bord = "Birth order",
+                   delivery_g_f = "Place of delivery",
+                   stunting_g_f = "Stunting (height/age)",
+                   wasting_g_f = "Wasting (weight/height)",
+                   
+                   # Health care related variables
+                   access = "Problems accessing healthcare",
+                   visit3mo_f = "Health worker visit in last 3 months",
+                   insurance_f = "Covered by health insurance",
+                   healthcard_f = "Vaccination card",
+                   fimm_f = "Fully immunized",
+                   icds_f = "Anganwadi or ICDS benefits",
+                   parasites_f = "Drugs for intestinal parasites (last 6 months)",
+                   vitA_f = "Vitamin A supplementation (last 6 months)",
+                   iron_f = "Iron supplementation (last 7 days)",
+                   
+                   # Treatment related variables
+                   source_g1_f = "Source of treatment",
+                   days.after = "Days after treatment",
+                   eat_g_f = "Amount given to eat",
+                   drink_g_f = "Amount given to drink"
+                   ))
+
+strata <- c(list(Total=nfhs),
+            list("Urban"=subset(nfhs, place_f == "Urban")),
+            list("Rural"=subset(nfhs, place_f == "Rural")))
+```
+
+
+## Custom render
+
+Table1 allows to customize the contents using custom renderers. A custom render can be a function that take a vector as the first argument and return a (named) character vector. There is also a simpler way to customize the table contents using an abbreviated code syntax instead of a render function, but it allows less control over rounding (see below). Here, for example, we specify render functions for the continuous and categorical variables as follows:
+
+```{r}
+my.render.cont <- function(x) {
+    with(stats.apply.rounding(stats.default(x), digits=3), c("",
+        "Mean (SD)"=sprintf("%s (&plusmn; %s)", MEAN, SD)))
+}
+my.render.cat <- function(x) {
+    c("", sapply(stats.default(x), function(y) with(y,
+        sprintf("%d (%.1f%%)", FREQ, PCT))))
+}
+
+```
+
+
+
+```{r}
+table1(strata, labels,
+       render.continuous=my.render.cont, render.categorical=my.render.cat)
+```
+## Table 1 by urban/rural and wave.
+
+```{r}
+labels <- list(
+    variables=list(# Outcome variables
+                   antibiotics_f = "Were given antibiotics",
+                   
+                   # Demographics
+                   state_f = "State",
+                   wi_f = "Wealth index",
+                   religion_f = "Religion",
+                   caste_f = "Caste/Tribe",
+                   
+                   # Child related variables
+                   sex_f = "Sex",
+                   age = "Age (months)",
+                   bord = "Birth order",
+                   bord_f = "Birth order cat",
+                   delivery_g_f = "Place of delivery",
+                   interview.quarter_f = "Interview season",
+                   breastfed_g_f = "Breastfeeding",
+                   stunting_g_f = "Stunting (height/age)",
+                   wasting_g_f = "Wasting (weight/height)",
+                   
+                   # Mother's associated variables
+                   m.age = "Mother's age",
+                   mageb_g_f = "Maternal age at child birth \u2265 20",
+                   m.edu.att_f = "Educational level",
+                   m.tobacco_f = "Tobacco consumption",
+                   smoke_g_f = "Smoke exposure",
+                   
+                   # Household variables
+                   hhsize = "Household size",
+                   fuel_g_f = "Type of cooking fuel",
+                   water.source_g_f = "Source of drinking water",
+                   toilet_g_f = "Toilet facility",
+                   handwash.soap_f = "Soap for handwashing",
+                   media_f = "Media accessibility",
+                   bpl_f = "Below Poverty Line card",
+                   
+                   # Treatment related variables
+                   source_g1_f = "Source of treatment",
+                   days.after = "Days after treatment",
+                   days.after_f = "Days after treatment cat",
+                   eat_g_f = "Amount given to eat",
+                   drink_g_f = "Amount given to drink",
+                   
+                   # Health care related variables
+                   access = "Problems accessing healthcare",
+                   distance_f = "Distance to health facility",
+                   visit3mo_f = "Health worker visit in last 3 months",
+                   insurance_f = "Covered by health insurance",
+                   healthcard_f = "Has health card",
+                   
+                   # Vaccination
+                   fimm_f = "Fully immunized",
+                   dpt3 = "DPT vaccine (3 doses)",
+                   polio3 = "Polio (3 doses)",
+                   bcg_f = "BCG vaccine",
+                   measles_f = "Measles vaccine",
+                   
+                   icds_f = "Anganwadi or ICDS benefits",
+                   parasites_f = "Drugs for intestinal parasites (last 6 months)",
+                   vitA_f = "Vitamin A supplementation (last 6 months)",
+                   iron_f = "Iron supplementation (last 7 days)"
+                   ),
+groups = list("NFHS4", "NFHS5", ""))
+
+strata <- c(list("Urban"=subset(nfhs, place_f == "Urban" & wave == "NFHS4")),
+            list("Rural"=subset(nfhs, place_f == "Rural" & wave == "NFHS4")),
+            list("Urban"=subset(nfhs, place_f == "Urban" & wave == "NFHS5")),
+            list("Rural"=subset(nfhs, place_f == "Rural" & wave == "NFHS5")),
+            list(Total=nfhs))
+```
+
+### Table 1 with only continuous variables.
+
+```{r}
+labels <- list(
+    variables=list(# Outcome variables
+                   antibiotics_f = "Were given antibiotics",
+                   age = "Age (months)",
+                   # Mother's associated variables
+                   m.age = "Mother's age (years)",
+                   # Household variables
+                   hhsize = "Household size",
+                   # Health care related variables
+                   access = "Problems accessing healthcare"
+                   ))
+
+strata <- c(list(Total=nfhs),
+            list("Urban"=subset(nfhs, place_f == "Urban")),
+            list("Rural"=subset(nfhs, place_f == "Rural")))
+```
+
+
+## Custom render continuous
+
+```{r}
+my.render.cont <- function(x) {
+    with(stats.apply.rounding(stats.default(x), digits=3), c("",
+        "Mean (SD)"=sprintf("%s (&plusmn; %s, %s)", MEAN, SD, N)))
+}
+my.render.cat <- function(x) {
+    c("", sapply(stats.default(x), function(y) with(y,
+        sprintf("%d (%.f%%)", FREQ, PCT))))
+}
+```
+
+```{r}
+table1(strata, labels,
+       render.continuous=my.render.cont, render.categorical=my.render.cat)
+```
+After several attempts I did not manage to add the SE instead of the SD to the `table1()` function so I calculated and changed them manually:
+
+```{r}
+
+library(plotrix)
+std_mean <- function(x) sd(x)/sqrt(length(x))
+se_urban <- function(sd) sd/sqrt(3402)
+se_rural <- function(sd) sd/sqrt(13570)
+se_abx <- function(sd) sd/sqrt(3266)
+
+se_abx(2.7)
+
+std_mean(nfhs$bord)
+se_urban(4.62)
+se_rural(4.83)
+
+std_mean(nfhs$age)
+se_urban(4.62)
+se_rural(4.83)
+
+std_mean(nfhs$m.age)
+se_urban(4.62)
+se_rural(4.83)
+
+std_mean(nfhs$hhsize)
+se_urban(2.82)
+se_rural(2.79)
+
+std_mean(nfhs$access)
+se_urban(4.62)
+se_rural(4.83)
+
+```
+

@@ -1,0 +1,99 @@
+---
+title: "NFHS4 Data cleaning"
+author: "Hector"
+date: '2022-05-18'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# NFHS4 Data cleaning
+
+## Objectives
+
+-   Input the dataset from .DTA file.
+
+-   Create a .R dataset easier and quicker to handle.
+
+-   Reduce the number of obs. to children <60 months (original selection, in the recoding file we selected for <36 months)
+
+-   Delete variables containing all NA's values.
+
+
+### Loading the dataset
+
+First of all we will load the necessary packages:
+
+```{r}
+library(tidyverse)
+library(labelled) # Contains the look_for() function
+library(epiDisplay) # tab1()
+```
+
+Due to the big size of the .DTA we need to push the RAM memory by doing garbage collection (RAM memory cleaning) and raising the memory.limit:
+```{r}
+gc()
+memory.limit()
+memory.limit(size = 30000)
+```
+
+Then we will proceed to load the NFHS dataset onto R.
+
+```{r}
+library(haven)
+IABR73FL <- read_dta("IABR73FL.DTA")
+```
+
+Saving as R data file, for faster loading.
+
+```{r}
+saveRDS(IABR73FL, file = "IABR73FL.Rds")
+nfhs4 <- readRDS(file = "IABR73FL.Rds")
+```
+
+Selecting only the rows corresponding to U5 children and saving the new dataset:
+
+B19:	 	 	Age of child, or months since birth for children who have died, in completed months, computed as: B19 = int( (V008A - B18) / 30.4375)
+
+503  b8       current age of child                                       dbl 
+824  hw1      na - child's age in months                                 dbl    
+
+498 b3       date of birth (cmc)                                     dbl
+11  v008     date of interview (cmc)                                 dbl   
+
+First we need to create the age variable by subtracting the date of birth of the child (CMC) to the date of the interview (CMC)
+```{r}
+nfhs4 <- nfhs4 %>% 
+  mutate(age.years = as.integer((v008 - b3)/12 )) %>% 
+  mutate(age = v008 - b3)
+
+```
+
+Creating a .Rds file with only children less than 5 years old
+
+```{r}
+nfhs4short <- nfhs4 %>% filter(age < 60)
+saveRDS(nfhs4short, file = "IABR73FL_under5.Rds")
+```
+
+Loading a function for selecting all columns that does not contain all NAs.
+```{r}
+not_all_na <- function(x) any(!is.na(x))
+
+nfhs4shorter <- nfhs4short %>% select_if(not_all_na)
+```
+
+Saving the resulted dataset:
+
+```{r}
+saveRDS(nfhs4shorter, file = "IABR73FL_under5_short.Rds")
+```
+
+Checking the age distribution to corroborate the selection:
+
+```{r}
+tab1(nfhs4shorter$age.years)
+tab1(nfhs4shorter$age)
+```
